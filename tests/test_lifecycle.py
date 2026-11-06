@@ -131,6 +131,39 @@ class TestLifecycle(unittest.TestCase):
         crit_breaches = [b for b in self.lifecycle.tat_breaches if b.breach_type == BreachType.CRITICAL]
         self.assertEqual(len(crit_breaches), 0)
 
+    def test_cancel_before_collection_full_refund(self):
+        self.lifecycle.handle_cancel(
+            "ORD-0018", "TST-K", datetime(2026, 10, 7, 8, 0)
+        )
+
+        bill = self.bills["ORD-0018"]
+        self.assertEqual(bill.refund, Decimal("180.00"))
+        self.assertEqual(bill.cancellation_charge, Decimal("0.00"))
+        self.assertEqual(bill.net_amount, Decimal("350.00"))
+
+    def test_cancel_after_collection_fifty_percent_refund(self):
+        self.test_records[("ORD-0018", "TST-K")].status = TestStatus.COLLECTED
+
+        self.lifecycle.handle_cancel(
+            "ORD-0018", "TST-K", datetime(2026, 10, 7, 10, 0)
+        )
+
+        bill = self.bills["ORD-0018"]
+        self.assertEqual(bill.refund, Decimal("90.00"))
+        self.assertEqual(bill.cancellation_charge, Decimal("90.00"))
+        self.assertEqual(bill.net_amount, Decimal("440.00"))
+
+    def test_cancel_after_processing_no_refund(self):
+        self.test_records[("ORD-0018", "TST-K")].status = TestStatus.PROCESSING
+
+        self.lifecycle.handle_cancel(
+            "ORD-0018", "TST-K", datetime(2026, 10, 7, 11, 0)
+        )
+
+        bill = self.bills["ORD-0018"]
+        self.assertEqual(bill.refund, Decimal("0.00"))
+        self.assertEqual(bill.cancellation_charge, Decimal("180.00"))
+        self.assertEqual(bill.net_amount, Decimal("530.00"))
 
 if __name__ == "__main__":
     unittest.main()

@@ -234,67 +234,151 @@ class OrderLifecycleManager:
             bill.refund += refund_amount
             bill.net_amount = max(Decimal("0.00"), bill.net_amount - refund_amount)
 
-    def handle_cancel(
-        self, order_id: str, item_code: str, ts: datetime
-    ):
+    def handle_cancel(self, order_id: str, item_code: str, ts: datetime):
         """
-        BR-11: Order & Test Cancellation.
-        Free before COLLECTED; after COLLECTED, 50% charged; after PROCESSING, no refund.
-        Panel cancellation is all-or-nothing.
+        BR-11: Order and Test Cancellation.
+
+        Before collection:
+            100% refund, no cancellation fee.
+
+        After collection but before processing:
+            50% refund and 50% cancellation fee.
+
+        After processing:
+            No refund; full amount is retained.
+
+        Panel cancellation:
+            All tests belonging to the panel are cancelled together.
         """
         order = self.orders.get(order_id)
-        if not order:
+        bill = self.bills.get(order_id)
+
+        if order is None or bill is None:
             return
 
-        bill = self.bills[order_id]
-
-        # Determine which tests are affected
-        affected_tests: List[str] = []
-        is_panel = False
-        target_panel = None
+        # Find the tests affected by this cancellation.
+        affected_tests = []
 
         if item_code == "ALL":
             affected_tests = [
-                tcode for (oid, tcode) in self.test_records.keys() if oid == order_id
+                tcode
+                for (oid, tcode), rec in self.test_records.items()
+                if oid == order_id and rec.status != TestStatus.CANCELLED
             ]
+
         elif item_code in self.panels:
-            is_panel = True
-            target_panel = self.panels[item_code]
-            affected_tests = list(target_panel.member_tests)
+            panel = self.panels[item_code]
+            affected_tests = [
+                tcode for tcode in panel.member_tests
+                if (order_id, tcode) in self.test_records
+                and self.test_records[(order_id, tcode)].status
+                != TestStatus.CANCELLED
+            ]
+
         else:
-            affected_tests = [item_code]
+            rec = self.test_records.get((order_id, item_code))
 
-        for tcode in affected_tests:
-            rec = self.test_records.get((order_id, tcode))
-            if not rec or rec.status == TestStatus.CANCELLED:
-                continue
+            if rec is None or rec.status == TestStatus.CANCELLED:
+                return
 
-            current_status = rec.status
-            if current_status in (TestStatus.CREATED, TestStatus.NEEDS_RESCHEDULE):
-                # Free before COLLECTED
-                self.record_status_change(order_id, tcode, TestStatus.CANCELLED, ts)
-            elif current_status in (TestStatus.COLLECTED, TestStatus.RECEIVED):
-                # After COLLECTED, before PROCESSING: 50% charge
-                self.record_status_change(order_id, tcode, TestStatus.CANCELLED, ts)
+            # If this test belongs to a panel, cancel the complete panel.
+            if rec.from_panel and rec.from_panel in self.panels:
+                panel = self.panels[rec.from_panel]
+                affected_tests = [
+                    tcode for tcode in panel.member_tests
+                    if (order_id, tcode) in self.test_records
+                    and self.test_records[(order_id, tcode)].status
+                    != TestStatus.CANCELLED
+                ]
+                item_code = rec.from_panel
             else:
-                # After PROCESSING: no refund
-                self.record_status_change(order_id, tcode, TestStatus.CANCELLED, ts)
+                affected_tests = [item_code]
 
-        # Update billing
-        mult = Decimal("1.0") + Decimal(str(order.priority.surcharge_multiplier))
+        if not affected_tests:
+            return
+
+        # Determine the cancellation stage.
+        stage_order = {
+            TestStatus.CREATED: 0,
+            TestStatus.NEEDS_RESCHEDULE: 0,
+            TestStatus.REJECTED_SAMPLE: 0,
+            TestStatus.COLLECTED: 1,
+            TestStatus.RECEIVED: 1,
+            TestStatus.PROCESSING: 2,
+            TestStatus.RESULTED: 2,
+            TestStatus.VERIFIED: 2,
+            TestStatus.REPORTED: 2,
+        }
+
+        latest_stage = max(
+            stage_order.get(
+                self.test_records[(order_id, tcode)].status, 2
+            )
+            for tcode in affected_tests
+        )
+
+        if latest_stage == 0:
+            refund_rate = Decimal("1.00")
+            charge_rate = Decimal("0.00")
+        elif latest_stage == 1:
+            refund_rate = Decimal("0.50")
+            charge_rate = Decimal("0.50")
+        else:
+            refund_rate = Decimal("0.00")
+            charge_rate = Decimal("1.00")
+
+        # Calculate the original amount for the cancelled item.
+        priority_multiplier = (
+            Decimal("1.00")
+            + Decimal(str(order.priority.surcharge_multiplier))
+        )
+
+        if item_code in self.panels:
+            original_amount = (
+                self.panels[item_code].price * priority_multiplier
+            )
+        else:
+            original_amount = sum(
+                (
+                    self.test_records[(order_id, tcode)].base_price
+                    for tcode in affected_tests
+                ),
+                Decimal("0.00")
+            ) * priority_multiplier
+
+        original_amount = original_amount.quantize(Decimal("0.01"))
+
+        refund_amount = (
+            original_amount * refund_rate
+        ).quantize(Decimal("0.01"))
+
+        cancellation_fee = (
+            original_amount * charge_rate
+        ).quantize(Decimal("0.01"))
+
+        # Mark every affected test as cancelled.
+        for tcode in affected_tests:
+            self.record_status_change(
+                order_id,
+                tcode,
+                TestStatus.CANCELLED,
+                ts
+            )
+
+        # Update the bill.
+        bill.refund += refund_amount
+        bill.cancellation_charge += cancellation_fee
+
+        # The original amount is already included in the initial bill.
+        # Reduce it by the actual refund; do not add the fee a second time.
+        bill.net_amount = max(
+            Decimal("0.00"),
+            bill.net_amount - refund_amount
+        ).quantize(Decimal("0.01"))
+
+        # Mark the complete order cancelled when ALL was requested.
         if item_code == "ALL":
-            if order.status in (TestStatus.CREATED, TestStatus.NEEDS_RESCHEDULE):
-                bill.cancellation_charge = Decimal("0.00")
-                bill.refund = bill.net_amount
-                bill.net_amount = Decimal("0.00")
             order.status = TestStatus.CANCELLED
-        elif is_panel and target_panel:
-            # 50% cancellation charge for panel
-            panel_cost = target_panel.price * mult
-            charge = (panel_cost * Decimal("0.50")).quantize(Decimal("0.01"))
-            bill.cancellation_charge += charge
-            bill.refund += panel_cost
-            bill.net_amount = (bill.net_amount + charge) - panel_cost
 
     def handle_reported(self, order_id: str, test_code: str, ts: datetime):
         """
