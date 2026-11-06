@@ -1,0 +1,7 @@
+phleb_id,phleb_name,base_lab_id,shift_start,shift_end,max_visits_per_day
+PHB-01,Abhishek Khan,LAB-01,06:00,14:00,8
+PHB-02,Rajesh Jain,LAB-01,06:00,14:00,8
+PHB-03,Tejaswini Sheikh,LAB-01,06:00,14:00,8
+PHB-04,Usha Menon,LAB-02,06:00,14:00,8
+PHB-05,Arjun Singh,LAB-02,06:00,14:00,8
+PHB-06,Prakash Hegde,LAB-02,06:00,14:00,8

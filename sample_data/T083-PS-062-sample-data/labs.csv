@@ -1,0 +1,5 @@
+lab_id,lab_name,tier,open_time,close_time,stat_24x7,latitude,longitude
+LAB-01,Jayanagar Collection & Lab,L1,07:00,21:00,true,12.925000,77.583000
+LAB-02,Whitefield Collection & Lab,L1,07:00,21:00,true,12.969800,77.750000
+LAB-03,Koramangala Regional Lab,L2,06:00,23:00,false,12.935200,77.624500
+LAB-04,Central Reference Lab,REFERENCE,08:00,20:00,false,13.035500,77.597000

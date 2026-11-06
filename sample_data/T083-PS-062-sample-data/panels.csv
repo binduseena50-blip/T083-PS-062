@@ -1,0 +1,21 @@
+panel_id,panel_name,price
+PNL-01,Lipid Profile,500.00
+PNL-02,Liver Function Test,650.00
+PNL-03,Kidney Function Test,600.00
+PNL-04,Thyroid Profile (Total),550.00
+PNL-05,Thyroid Profile (Free),750.00
+PNL-06,Diabetes Screen,500.00
+PNL-07,Fever Panel,1200.00
+PNL-08,Basic Health Check,1400.00
+PNL-09,Electrolytes,450.00
+PNL-10,Anaemia Profile,1500.00
+PNL-11,Coagulation Profile,650.00
+PNL-12,Cardiac Markers,1700.00
+PNL-13,Antenatal Profile,1600.00
+PNL-14,Pancreatic Profile,750.00
+PNL-15,Bone Profile,1300.00
+PNL-16,Hormone Panel (Female),1500.00
+PNL-17,Tumour Markers (Basic),2800.00
+PNL-18,Comprehensive Health Check,3200.00
+PNL-19,Infection Screen,1300.00
+PNL-20,Renal + Electrolyte Plus,900.00

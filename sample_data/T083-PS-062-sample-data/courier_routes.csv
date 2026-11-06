@@ -1,0 +1,6 @@
+from_lab_id,to_lab_id,cutoff_time,departure_time,transit_minutes
+LAB-01,LAB-03,16:00,16:30,50
+LAB-02,LAB-03,15:30,16:00,70
+LAB-01,LAB-04,17:00,17:30,75
+LAB-02,LAB-04,16:30,17:00,90
+LAB-03,LAB-04,18:00,18:30,60
